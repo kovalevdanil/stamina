@@ -271,10 +271,14 @@ void *draw()
 {
     while (1)
     {
-        refresh_screen();
+        for (int i = 0; i < 10; i++)
+        {
+            refresh_screen();
+            usleep(10000);
+        }
         rows_move();
         rows_check_and_replace();
-        usleep(300000);
+        usleep(10000);
     }
 }
 
