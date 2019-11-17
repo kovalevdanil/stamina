@@ -28,3 +28,11 @@ struct config
     struct node *cur_word;
     char buffer[BUFSIZE];
 };
+
+struct game_set
+{
+    int speed; // 1 - 9
+    int syms;
+    int fail;
+    time_t start;
+};

@@ -19,9 +19,11 @@
 #include "terminal.h"
 
 #define CTRL_KEY(k) ((k)&0x1f)
+#define ALLOWED_FAILS 3
 
 /* DATA */
 struct config Config;
+struct game_set Game;
 pthread_mutex_t mutex;
 
 /* ROWS */
@@ -66,13 +68,11 @@ void row_replace_and_move(int at)
 
 void rows_move()
 {
-    pthread_mutex_lock(&mutex);
     for (int i = 0; i < Config.nrows; i++)
     {
         Config.rows[i].spaces += rand() % 2 + 1;
         row_update(Config.rows + i);
     }
-    pthread_mutex_unlock(&mutex);
 }
 
 void rows_replace(char *word)
@@ -90,14 +90,15 @@ void rows_replace(char *word)
 
 void rows_check_and_replace()
 {
-    pthread_mutex_lock(&mutex);
     for (int i = 0; i < Config.nrows; i++)
     {
         struct row *row = Config.rows + i;
         if (row->spaces + row->wsize >= Config.screencols)
+        {
+            Game.fail++;
             row_replace_and_move(i);
+        }
     }
-    pthread_mutex_unlock(&mutex);
 }
 
 /* FILE I/O */
@@ -162,6 +163,8 @@ void draw_input_bar(abuf *ab)
     if (inplen > Config.screencols)
         inplen = Config.screencols;
     mempcpy(buf, Config.buffer, inplen);
+    if (Config.screencols > inplen)
+        buf[Config.screencols - 2] = '0' + Game.fail;
     ab_append(ab, buf, Config.screencols);
     ab_append(ab, "\x1b[m", 3);
 
@@ -184,7 +187,7 @@ void refresh_screen()
 {
     abuf ab = ABUF_INIT;
 
-    ab_append(&ab, "\x1b[0;0H", 6);
+    // ab_append(&ab, "\x1b[0;0H", 6);
     ab_append(&ab, "\x1b[2J", 4);
 
     pthread_mutex_lock(&mutex);
@@ -269,25 +272,31 @@ int process_key_press()
 /* THREAD FUNTIONS */
 void *draw()
 {
-    while (1)
+    while (Game.fail < ALLOWED_FAILS)
     {
         for (int i = 0; i < 10; i++)
         {
             refresh_screen();
-            usleep(10000);
+            usleep((10 - Game.speed) * 10000);
         }
-        rows_move();
+        
+        pthread_mutex_lock(&mutex);
         rows_check_and_replace();
+        rows_move();
+        pthread_mutex_unlock(&mutex);
+
         usleep(10000);
     }
+    pthread_exit(NULL);
 }
 
 void *keypress()
 {
-    while (1)
+    while (Game.fail < ALLOWED_FAILS)
     {
         process_key_press();
     }
+    pthread_exit(NULL);
 }
 
 /* */
@@ -306,7 +315,12 @@ void init()
     Config.nrows = Config.screencols / 2;
 
     if (load_rows() == -1)
-        die("load rows");
+        die("load_rows");
+
+    Game.speed = 9;
+    Game.fail = 0;
+    Game.start = 0;
+    Game.syms = 0;
 }
 
 int main()
